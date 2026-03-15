@@ -3,3 +3,17 @@ body{
   margin: 0;
   background-color: black;
 }
+
+.minimap {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  width: 220px;
+  pointer-events: none;
+}
+
+.minimap svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}

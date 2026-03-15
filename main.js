@@ -75,6 +75,76 @@ const smoothCurve = new THREE.CatmullRomCurve3(basePts, true, "centripetal");
 const curvePts = smoothCurve.getSpacedPoints(segments);
 const curve = new THREE.CatmullRomCurve3(curvePts, true, "centripetal");
 
+let minimapSize = 220;
+let minimapPadding = 18;
+let svgNamespace = "http://www.w3.org/2000/svg";
+let minimapBounds = basePts.reduce((bounds, point) => ({
+    minX: Math.min(bounds.minX, point.x),
+    maxX: Math.max(bounds.maxX, point.x),
+    minZ: Math.min(bounds.minZ, point.z),
+    maxZ: Math.max(bounds.maxZ, point.z)
+}), {
+    minX: Infinity,
+    maxX: -Infinity,
+    minZ: Infinity,
+    maxZ: -Infinity
+});
+let minimapTrackWidth = minimapBounds.maxX - minimapBounds.minX;
+let minimapTrackHeight = minimapBounds.maxZ - minimapBounds.minZ;
+let minimapScale = Math.min(
+    (minimapSize - minimapPadding * 2) / minimapTrackWidth,
+    (minimapSize - minimapPadding * 2) / minimapTrackHeight
+);
+let minimapOffsetX = (minimapSize - minimapTrackWidth * minimapScale) * 0.5;
+let minimapOffsetY = (minimapSize - minimapTrackHeight * minimapScale) * 0.5;
+
+function toMinimapPoint(point) {
+    return {
+        x: minimapOffsetX + (point.x - minimapBounds.minX) * minimapScale,
+        y: minimapOffsetY + (minimapBounds.maxZ - point.z) * minimapScale
+    };
+}
+
+let minimap = document.createElement("div");
+minimap.className = "minimap";
+
+let minimapSvg = document.createElementNS(svgNamespace, "svg");
+minimapSvg.setAttribute("viewBox", `0 0 ${minimapSize} ${minimapSize}`);
+minimapSvg.setAttribute("aria-hidden", "true");
+
+let minimapTrack = document.createElementNS(svgNamespace, "path");
+let minimapOutline = document.createElementNS(svgNamespace, "path");
+let minimapMarker = document.createElementNS(svgNamespace, "circle");
+let minimapPathData = basePts.map((point, index) => {
+    let mapped = toMinimapPoint(point);
+    let command = index === 0 ? "M" : "L";
+
+    return `${command} ${mapped.x.toFixed(2)} ${mapped.y.toFixed(2)}`;
+}).join(" ") + " Z";
+
+minimapTrack.setAttribute("d", minimapPathData);
+minimapTrack.setAttribute("fill", "none");
+minimapTrack.setAttribute("stroke", "#f6f2ea");
+minimapTrack.setAttribute("stroke-width", "10");
+minimapTrack.setAttribute("stroke-linecap", "round");
+minimapTrack.setAttribute("stroke-linejoin", "round");
+
+minimapOutline.setAttribute("d", minimapPathData);
+minimapOutline.setAttribute("fill", "none");
+minimapOutline.setAttribute("stroke", "#221f24");
+minimapOutline.setAttribute("stroke-width", "3");
+minimapOutline.setAttribute("stroke-linecap", "round");
+minimapOutline.setAttribute("stroke-linejoin", "round");
+
+minimapMarker.setAttribute("r", "5");
+minimapMarker.setAttribute("fill", "#ff3b30");
+minimapMarker.setAttribute("stroke", "#ffe1db");
+minimapMarker.setAttribute("stroke-width", "2");
+
+minimapSvg.append(minimapTrack, minimapOutline, minimapMarker);
+minimap.appendChild(minimapSvg);
+document.body.appendChild(minimap);
+
 let bufferGeometry = new THREE.BufferGeometry().setFromPoints(curve.getSpacedPoints(segments));
 let lineBasicMaterial = new THREE.LineBasicMaterial({color: "aquamarine"})
 let line = new THREE.Line(bufferGeometry, lineBasicMaterial);
@@ -138,6 +208,11 @@ renderer.setAnimationLoop(() => {
     travelDistance = (travelDistance + distanceToTarget * travelLerp + curveLen) % curveLen;
 
     let t = travelDistance / curveLen;
+    let minimapPoint = toMinimapPoint(curve.getPointAt(t));
+
+    minimapMarker.setAttribute("cx", minimapPoint.x.toFixed(2));
+    minimapMarker.setAttribute("cy", minimapPoint.y.toFixed(2));
+
     curve.getPointAt(t, camera.position);
 
     camera.setRotationFromMatrix(mat.lookAt(
