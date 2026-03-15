@@ -112,6 +112,7 @@ let minimapSvg = document.createElementNS(svgNamespace, "svg");
 minimapSvg.setAttribute("viewBox", `0 0 ${minimapSize} ${minimapSize}`);
 minimapSvg.setAttribute("aria-hidden", "true");
 
+let minimapGroup = document.createElementNS(svgNamespace, "g");
 let minimapTrack = document.createElementNS(svgNamespace, "path");
 let minimapOutline = document.createElementNS(svgNamespace, "path");
 let minimapMarker = document.createElementNS(svgNamespace, "circle");
@@ -141,7 +142,8 @@ minimapMarker.setAttribute("fill", "#ff3b30");
 minimapMarker.setAttribute("stroke", "#ffe1db");
 minimapMarker.setAttribute("stroke-width", "2");
 
-minimapSvg.append(minimapTrack, minimapOutline, minimapMarker);
+minimapGroup.append(minimapTrack, minimapOutline, minimapMarker);
+minimapSvg.appendChild(minimapGroup);
 minimap.appendChild(minimapSvg);
 document.body.appendChild(minimap);
 
@@ -180,6 +182,9 @@ let travelDistance = curveLen * 0.12;
 let targetTravelDistance = travelDistance;
 let scrollTravelStep = 0.02;
 let travelLerp = 0.08;
+let minimapRotation = 0;
+let minimapRotationLerp = 0.12;
+let minimapRotationOffset = THREE.MathUtils.degToRad(100);
 
 window.addEventListener("wheel", (event) => {
     event.preventDefault();
@@ -208,12 +213,27 @@ renderer.setAnimationLoop(() => {
     travelDistance = (travelDistance + distanceToTarget * travelLerp + curveLen) % curveLen;
 
     let t = travelDistance / curveLen;
-    let minimapPoint = toMinimapPoint(curve.getPointAt(t));
+    let minimapCurvePoint = curve.getPointAt(t);
+    let minimapPoint = toMinimapPoint(minimapCurvePoint);
+    let minimapForwardPoint = toMinimapPoint(curve.getPointAt((t - 0.01 + 1) % 1));
+    let minimapHeading = Math.atan2(
+        minimapForwardPoint.y - minimapPoint.y,
+        minimapForwardPoint.x - minimapPoint.x
+    );
+    let targetMinimapRotation = minimapHeading + minimapRotationOffset;
+    let rotationDelta = targetMinimapRotation - minimapRotation;
+
+    rotationDelta = Math.atan2(Math.sin(rotationDelta), Math.cos(rotationDelta));
+    minimapRotation += rotationDelta * minimapRotationLerp;
 
     minimapMarker.setAttribute("cx", minimapPoint.x.toFixed(2));
     minimapMarker.setAttribute("cy", minimapPoint.y.toFixed(2));
+    minimapGroup.setAttribute(
+        "transform",
+        `rotate(${THREE.MathUtils.radToDeg(minimapRotation).toFixed(2)} ${minimapSize * 0.5} ${minimapSize * 0.5})`
+    );
 
-    curve.getPointAt(t, camera.position);
+    camera.position.copy(minimapCurvePoint);
 
     camera.setRotationFromMatrix(mat.lookAt(
         camera.position,
