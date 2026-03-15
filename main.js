@@ -10,7 +10,7 @@ let scene = new THREE.Scene();
 let camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 1, 1000);
 let renderer = new THREE.WebGLRenderer({ antialias: true });
 
-scene.background = new THREE.Color("Black");
+scene.background = new THREE.Color("#27221E");
 camera.position.set(0, 1, 1).setLength(100);
 camera.lookAt(scene.position);
 renderer.setSize(innerWidth, innerHeight);
@@ -112,13 +112,16 @@ roadMaterial.onBeforeCompile = (shader) => {
 
         float hue = fract(0.55 + uv.x * 0.82 + uv.y * 0.05 + sweepNoise * 0.24 - uTime * 0.018);
         vec3 rainbow = hsv2rgb(vec3(hue, 0.95, 1.0));
-        // vec3 warmCore = vec3(1.0, 0.78, 0.22);
-
-        // vec3 baseGlass = mix(vec3(0.015, 0.02, 0.05), rainbow * 0.18 + vec3(0.015, 0.018, 0.03), prismMask * 0.35);
+        vec3 warmCore = vec3(1.0, 0.78, 0.22);
+        vec3 baseGlass = mix(
+            vec3(0.015, 0.02, 0.05),
+            rainbow * 0.18 + vec3(0.015, 0.018, 0.03),
+            prismMask * 0.35
+        );
         vec3 prismaticScatter = rainbow * (0.08 + bandingA * 1.15 + bandingB * 0.65 + cracks * 0.45);
-        // vec3 centerGlow = warmCore * (0.05 + 0.42 * coreMask);
+        vec3 centerGlow = warmCore * (0.05 + 0.42 * coreMask);
 
-        diffuseColor.rgb = (prismaticScatter * 1.15 + sparkle * 0.9) * edgeFade;
+        diffuseColor.rgb = (baseGlass + centerGlow + prismaticScatter * 1.15 + sparkle * 0.9) * edgeFade;
         float visibleMask = clamp(
             max(max(diffuseColor.rgb.r, diffuseColor.rgb.g), diffuseColor.rgb.b) * 1.35,
             0.0,
@@ -148,8 +151,8 @@ roadMaterial.onBeforeCompile = (shader) => {
             hueLeft * laneLeft * (0.4 + 1.6 * streakA) +
             hueMid * laneMid * (0.25 + 1.9 * (streakA + streakB)) +
             hueRight * laneRight * (0.4 + 1.6 * streakB);
-        // vec3 warmCoreGlow = vec3(1.2, 0.82, 0.22) * (0.08 + 0.7 * coreMaskGlow);
-        vec3 bridgeGlow = coloredLanes * 1.2 + sparkleGlow * vec3(0.5, 0.7, 1.0);
+        vec3 warmCoreGlow = vec3(1.2, 0.82, 0.22) * (0.08 + 0.7 * coreMaskGlow);
+        vec3 bridgeGlow = warmCoreGlow + coloredLanes * 1.2 + sparkleGlow * vec3(0.5, 0.7, 1.0);
         totalEmissiveRadiance += bridgeGlow * 1.5;
         `
     );
