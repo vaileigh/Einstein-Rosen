@@ -106,6 +106,19 @@ let mat = new THREE.Matrix4();
 let curveLen = curve.getLength();
 // noinspection JSDeprecatedSymbols
 let clock = new THREE.Clock();
+let travelDistance = curveLen * 0.12;
+let targetTravelDistance = travelDistance;
+let scrollTravelStep = 0.02;
+let travelLerp = 0.08;
+
+window.addEventListener("wheel", (event) => {
+    event.preventDefault();
+    targetTravelDistance = (targetTravelDistance + event.deltaY * scrollTravelStep) % curveLen;
+
+    if (targetTravelDistance < 0) {
+        targetTravelDistance += curveLen;
+    }
+}, { passive: false });
 
 renderer.setAnimationLoop(() => {
     let elapsed = clock.getElapsedTime();
@@ -114,8 +127,17 @@ renderer.setAnimationLoop(() => {
         roadMaterial.userData.shader.uniforms.uTime.value = elapsed;
     }
 
-    let t = 0.12;
-    // let t = ((elapsed * 10) % curveLen) / curveLen;
+    let distanceToTarget = targetTravelDistance - travelDistance;
+
+    if (distanceToTarget > curveLen * 0.5) {
+        distanceToTarget -= curveLen;
+    } else if (distanceToTarget < -curveLen * 0.5) {
+        distanceToTarget += curveLen;
+    }
+
+    travelDistance = (travelDistance + distanceToTarget * travelLerp + curveLen) % curveLen;
+
+    let t = travelDistance / curveLen;
     curve.getPointAt(t, camera.position);
 
     camera.setRotationFromMatrix(mat.lookAt(
