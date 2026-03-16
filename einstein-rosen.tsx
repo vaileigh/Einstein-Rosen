@@ -435,7 +435,7 @@ export default function EinsteinRosen(props: Partial<EinsteinRosenProps>) {
             const offsetY = (mapSize - trackHeight * scale) * 0.5
 
             const toMinimapPoint = (point: THREE.Vector3) => ({
-                x: offsetX + (point.x - bounds.minX) * scale,
+                x: offsetX + (bounds.maxX - point.x) * scale,
                 y: offsetY + (bounds.maxZ - point.z) * scale,
             })
 
