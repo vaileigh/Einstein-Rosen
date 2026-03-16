@@ -4,6 +4,9 @@ import * as THREE from "three"
 
 type EinsteinRosenProps = {
     progress: number
+    usePageScroll: boolean
+    scrollStrength: number
+    scrollSmoothing: number
     backgroundColor: string
     minimapWidthVw: number
     minimapMinSize: number
@@ -153,6 +156,9 @@ function buildTrackPoints(segments: number) {
 export default function EinsteinRosen(props: Partial<EinsteinRosenProps>) {
     const {
         progress = 0.12,
+        usePageScroll = true,
+        scrollStrength = 0.35,
+        scrollSmoothing = 0.08,
         backgroundColor = "rgba(0,0,0,0)",
         minimapWidthVw = 12,
         minimapMinSize = 160,
@@ -164,6 +170,10 @@ export default function EinsteinRosen(props: Partial<EinsteinRosenProps>) {
 
     const containerRef = React.useRef<HTMLDivElement | null>(null)
     const progressRef = React.useRef(progress)
+    const usePageScrollRef = React.useRef(usePageScroll)
+    const pageScrollProgressRef = React.useRef(progress)
+    const scrollStrengthRef = React.useRef(scrollStrength)
+    const scrollSmoothingRef = React.useRef(scrollSmoothing)
     const minimapVisibleRef = React.useRef(showMinimap)
     const minimapWidthVwRef = React.useRef(minimapWidthVw)
     const minimapMinSizeRef = React.useRef(minimapMinSize)
@@ -174,6 +184,9 @@ export default function EinsteinRosen(props: Partial<EinsteinRosenProps>) {
     const minimapBottomRef = React.useRef(minimapBottom)
 
     progressRef.current = progress
+    usePageScrollRef.current = usePageScroll
+    scrollStrengthRef.current = scrollStrength
+    scrollSmoothingRef.current = scrollSmoothing
     minimapVisibleRef.current = showMinimap
     minimapWidthVwRef.current = minimapWidthVw
     minimapMinSizeRef.current = minimapMinSize
@@ -335,6 +348,19 @@ export default function EinsteinRosen(props: Partial<EinsteinRosenProps>) {
         const matrix = new THREE.Matrix4()
         const clock = new THREE.Clock()
         const minimapRotationOffset = THREE.MathUtils.degToRad(100)
+        let smoothedProgress = progressRef.current
+
+        const updatePageScrollProgress = () => {
+            const scrollRange =
+                document.documentElement.scrollHeight - window.innerHeight
+
+            if (scrollRange <= 0) {
+                pageScrollProgressRef.current = progressRef.current
+                return
+            }
+
+            pageScrollProgressRef.current = window.scrollY / scrollRange
+        }
 
         const setSize = () => {
             const width = container.clientWidth || 1
@@ -391,9 +417,15 @@ export default function EinsteinRosen(props: Partial<EinsteinRosenProps>) {
         let toMinimapPoint = setSize()
         const resizeObserver = new ResizeObserver(() => {
             toMinimapPoint = setSize()
+            updatePageScrollProgress()
         })
 
         resizeObserver.observe(container)
+        window.addEventListener("scroll", updatePageScrollProgress, {
+            passive: true,
+        })
+        window.addEventListener("resize", updatePageScrollProgress)
+        updatePageScrollProgress()
 
         let frameId = 0
         const renderFrame = () => {
@@ -405,7 +437,13 @@ export default function EinsteinRosen(props: Partial<EinsteinRosenProps>) {
                 shader.uniforms.uTime.value = elapsed
             }
 
-            const normalized = ((progressRef.current % 1) + 1) % 1
+            const sourceProgress = usePageScrollRef.current
+                ? pageScrollProgressRef.current
+                : progressRef.current
+            const targetProgress = sourceProgress * scrollStrengthRef.current
+            smoothedProgress +=
+                (targetProgress - smoothedProgress) * scrollSmoothingRef.current
+            const normalized = ((smoothedProgress % 1) + 1) % 1
             const curvePoint = curve.getPointAt(normalized)
             const minimapPoint = toMinimapPoint(curvePoint)
             const forwardPoint = toMinimapPoint(
@@ -443,6 +481,8 @@ export default function EinsteinRosen(props: Partial<EinsteinRosenProps>) {
         return () => {
             cancelAnimationFrame(frameId)
             resizeObserver.disconnect()
+            window.removeEventListener("scroll", updatePageScrollProgress)
+            window.removeEventListener("resize", updatePageScrollProgress)
             renderer.dispose()
             roadGeometry.dispose()
             cylinderGeometry.dispose()
@@ -480,6 +520,30 @@ addPropertyControls(EinsteinRosen, {
         max: 1,
         step: 0.001,
         defaultValue: 0.12,
+        hidden: (props) => props.usePageScroll,
+    },
+    usePageScroll: {
+        type: ControlType.Boolean,
+        title: "Page Scroll",
+        defaultValue: true,
+        enabledTitle: "On",
+        disabledTitle: "Off",
+    },
+    scrollStrength: {
+        type: ControlType.Number,
+        title: "Scroll Amt",
+        min: 0.05,
+        max: 2,
+        step: 0.01,
+        defaultValue: 0.35,
+    },
+    scrollSmoothing: {
+        type: ControlType.Number,
+        title: "Scroll Smooth",
+        min: 0.01,
+        max: 0.3,
+        step: 0.01,
+        defaultValue: 0.08,
     },
     backgroundColor: {
         type: ControlType.Color,
