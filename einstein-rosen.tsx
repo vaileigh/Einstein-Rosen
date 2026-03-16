@@ -11,6 +11,17 @@ type EinsteinRosenProps = {
     trackStartOffset: number
     scrollStartOffsetVh: number
     scrollEndOffsetVh: number
+    liquidAmount: number
+    liquidSpeed: number
+    mouseLiquidAmount: number
+    mouseLiquidRadius: number
+    mouseStretchAmount: number
+    mouseStretchLag: number
+    mouseStretchRelease: number
+    mouseBlobAmount: number
+    mouseBlobSoftness: number
+    mouseLeaveStretchBoost: number
+    mouseStretchAnisotropy: number
     backgroundColor: string
     minimapWidthVw: number
     minimapMinSize: number
@@ -35,10 +46,34 @@ function createRoadMaterial() {
 
     material.onBeforeCompile = (shader) => {
         shader.uniforms.uTime = { value: 0 }
+        shader.uniforms.uLiquidAmount = { value: 0.045 }
+        shader.uniforms.uLiquidSpeed = { value: 1.0 }
+        shader.uniforms.uMouse = { value: new THREE.Vector2(0.5, 0.5) }
+        shader.uniforms.uMouseVelocity = { value: new THREE.Vector2(0, 0) }
+        shader.uniforms.uMouseLiquidAmount = { value: 0.04 }
+        shader.uniforms.uMouseLiquidRadius = { value: 0.18 }
+        shader.uniforms.uMouseStretchAmount = { value: 0.06 }
+        shader.uniforms.uMouseBlobAmount = { value: 0.07 }
+        shader.uniforms.uMouseBlobSoftness = { value: 2.2 }
+        shader.uniforms.uMouseLeaveBoost = { value: 1.6 }
+        shader.uniforms.uMouseStretchAnisotropy = { value: 0.45 }
+        shader.uniforms.uMouseActive = { value: 0.0 }
         ;(material.userData as any).shader = shader
 
         shader.fragmentShader = `
         uniform float uTime;
+        uniform float uLiquidAmount;
+        uniform float uLiquidSpeed;
+        uniform vec2 uMouse;
+        uniform vec2 uMouseVelocity;
+        uniform float uMouseLiquidAmount;
+        uniform float uMouseLiquidRadius;
+        uniform float uMouseStretchAmount;
+        uniform float uMouseBlobAmount;
+        uniform float uMouseBlobSoftness;
+        uniform float uMouseLeaveBoost;
+        uniform float uMouseStretchAnisotropy;
+        uniform float uMouseActive;
         float hash21(vec2 p){
             p = fract(p * vec2(123.34, 345.45));
             p += dot(p, p + 34.345);
@@ -61,11 +96,37 @@ function createRoadMaterial() {
             rgb = rgb * rgb * (3.0 - 2.0 * rgb);
             return c.z * mix(vec3(1.0), rgb, c.y);
         }
+
+        vec2 liquidWarp(vec2 uv){
+            float t = uTime * uLiquidSpeed;
+            float waveA = sin(uv.y * 24.0 - t * 2.4);
+            float waveB = sin(uv.y * 46.0 + uv.x * 9.0 + t * 1.8);
+            float waveC = sin(uv.x * 18.0 - t * 1.2);
+            float swirl = noise21(vec2(uv.y * 14.0 - t * 0.8, uv.x * 8.0 + t * 0.6));
+            uv.x += (waveA * 0.65 + waveB * 0.35 + (swirl - 0.5) * 1.4) * uLiquidAmount;
+            uv.y += (waveC * 0.2 + (swirl - 0.5) * 0.55) * (uLiquidAmount * 0.35);
+
+            vec2 mouseDelta = uv - uMouse;
+            float mouseDist = length(mouseDelta);
+            float mouseFalloff = 1.0 - smoothstep(0.0, uMouseLiquidRadius, mouseDist);
+            float softBlob = pow(mouseFalloff, max(0.35, uMouseBlobSoftness));
+            float mouseWave = sin(mouseDist * 42.0 - t * 5.5);
+            vec2 mouseDir = mouseDist > 0.0001 ? mouseDelta / mouseDist : vec2(0.0);
+            uv += mouseDir * mouseWave * softBlob * uMouseLiquidAmount * uMouseActive;
+
+            vec2 stretchVelocity = vec2(uMouseVelocity.x, -uMouseVelocity.y) * uMouseStretchAnisotropy;
+            float leaveMix = 1.0 + (1.0 - uMouseActive) * (uMouseLeaveBoost - 1.0);
+            float trailStrength = clamp(uMouseActive * leaveMix, 0.0, uMouseLeaveBoost);
+            uv -= stretchVelocity * softBlob * uMouseStretchAmount * trailStrength;
+            uv += mouseDir * softBlob * (uMouseBlobAmount * 0.58) * trailStrength;
+            uv -= mouseDir * (1.0 - mouseDist / max(uMouseLiquidRadius, 0.0001)) * softBlob * (uMouseBlobAmount * 0.1) * trailStrength;
+            return uv;
+        }
         ${shader.fragmentShader}
     `.replace(
             `#include <color_fragment>`,
             `#include <color_fragment>
-        vec2 uv = vUv;
+        vec2 uv = liquidWarp(vUv);
         float centered = 1.0 - smoothstep(0.0, 0.5, abs(uv.x - 0.5));
         float coreMask = pow(centered, 5.5);
         float prismMask = pow(centered, 1.35);
@@ -104,7 +165,7 @@ function createRoadMaterial() {
         shader.fragmentShader = shader.fragmentShader.replace(
             `#include <emissivemap_fragment>`,
             `#include <emissivemap_fragment>
-        vec2 uvGlow = vUv;
+        vec2 uvGlow = liquidWarp(vUv);
         float centeredGlow = 1.0 - smoothstep(0.0, 0.5, abs(uvGlow.x - 0.5));
         float coreMaskGlow = pow(centeredGlow, 7.0);
         float laneLeft = exp(-abs(uvGlow.x - 0.26) * 22.0);
@@ -167,6 +228,17 @@ export default function EinsteinRosen(props: Partial<EinsteinRosenProps>) {
         trackStartOffset = 0.647,
         scrollStartOffsetVh = 0.85,
         scrollEndOffsetVh = 0.15,
+        liquidAmount = 0.045,
+        liquidSpeed = 1,
+        mouseLiquidAmount = 0.04,
+        mouseLiquidRadius = 0.18,
+        mouseStretchAmount = 0.1,
+        mouseStretchLag = 0.12,
+        mouseStretchRelease = 0.05,
+        mouseBlobAmount = 0.09,
+        mouseBlobSoftness = 1.8,
+        mouseLeaveStretchBoost = 2.2,
+        mouseStretchAnisotropy = 0.45,
         backgroundColor = "rgba(0,0,0,0)",
         minimapWidthVw = 12,
         minimapMinSize = 160,
@@ -188,6 +260,22 @@ export default function EinsteinRosen(props: Partial<EinsteinRosenProps>) {
     const scrollStartOffsetVhRef = React.useRef(scrollStartOffsetVh)
     const scrollEndOffsetVhRef = React.useRef(scrollEndOffsetVh)
     const smoothedProgressRef = React.useRef(0)
+    const liquidAmountRef = React.useRef(liquidAmount)
+    const liquidSpeedRef = React.useRef(liquidSpeed)
+    const mouseLiquidAmountRef = React.useRef(mouseLiquidAmount)
+    const mouseLiquidRadiusRef = React.useRef(mouseLiquidRadius)
+    const mouseStretchAmountRef = React.useRef(mouseStretchAmount)
+    const mouseStretchLagRef = React.useRef(mouseStretchLag)
+    const mouseStretchReleaseRef = React.useRef(mouseStretchRelease)
+    const mouseBlobAmountRef = React.useRef(mouseBlobAmount)
+    const mouseBlobSoftnessRef = React.useRef(mouseBlobSoftness)
+    const mouseLeaveStretchBoostRef = React.useRef(mouseLeaveStretchBoost)
+    const mouseStretchAnisotropyRef = React.useRef(mouseStretchAnisotropy)
+    const mouseTargetUvRef = React.useRef(new THREE.Vector2(0.5, 0.5))
+    const mouseCurrentUvRef = React.useRef(new THREE.Vector2(0.5, 0.5))
+    const mouseVelocityUvRef = React.useRef(new THREE.Vector2(0, 0))
+    const mouseHitActiveRef = React.useRef(false)
+    const mouseActiveStrengthRef = React.useRef(0)
     const minimapVisibleRef = React.useRef(showMinimap)
     const minimapWidthVwRef = React.useRef(minimapWidthVw)
     const minimapMinSizeRef = React.useRef(minimapMinSize)
@@ -205,6 +293,17 @@ export default function EinsteinRosen(props: Partial<EinsteinRosenProps>) {
     trackStartOffsetRef.current = trackStartOffset
     scrollStartOffsetVhRef.current = scrollStartOffsetVh
     scrollEndOffsetVhRef.current = scrollEndOffsetVh
+    liquidAmountRef.current = liquidAmount
+    liquidSpeedRef.current = liquidSpeed
+    mouseLiquidAmountRef.current = mouseLiquidAmount
+    mouseLiquidRadiusRef.current = mouseLiquidRadius
+    mouseStretchAmountRef.current = mouseStretchAmount
+    mouseStretchLagRef.current = mouseStretchLag
+    mouseStretchReleaseRef.current = mouseStretchRelease
+    mouseBlobAmountRef.current = mouseBlobAmount
+    mouseBlobSoftnessRef.current = mouseBlobSoftness
+    mouseLeaveStretchBoostRef.current = mouseLeaveStretchBoost
+    mouseStretchAnisotropyRef.current = mouseStretchAnisotropy
     minimapVisibleRef.current = showMinimap
     minimapWidthVwRef.current = minimapWidthVw
     minimapMinSizeRef.current = minimapMinSize
@@ -370,6 +469,8 @@ export default function EinsteinRosen(props: Partial<EinsteinRosenProps>) {
         minimapMarker.setAttribute("stroke-width", "1.5")
 
         const matrix = new THREE.Matrix4()
+        const raycaster = new THREE.Raycaster()
+        const pointerNdc = new THREE.Vector2()
         const clock = new THREE.Clock()
         const minimapRotationOffset = THREE.MathUtils.degToRad(100)
         const updatePageScrollProgress = () => {
@@ -473,6 +574,29 @@ export default function EinsteinRosen(props: Partial<EinsteinRosenProps>) {
             passive: true,
         })
         window.addEventListener("resize", updatePageScrollProgress)
+        const updateMouseUv = (event: PointerEvent) => {
+            const rect = container.getBoundingClientRect()
+            const x = (event.clientX - rect.left) / Math.max(rect.width, 1)
+            const y = (event.clientY - rect.top) / Math.max(rect.height, 1)
+            pointerNdc.set(
+                THREE.MathUtils.clamp(x * 2 - 1, -1, 1),
+                THREE.MathUtils.clamp(-(y * 2 - 1), -1, 1)
+            )
+            raycaster.setFromCamera(pointerNdc, camera)
+            const hit = raycaster.intersectObject(tubeMesh, false)[0]
+
+            if (hit?.uv) {
+                mouseTargetUvRef.current.copy(hit.uv)
+                mouseHitActiveRef.current = true
+            } else {
+                mouseHitActiveRef.current = false
+            }
+        }
+        const handlePointerLeave = () => {
+            mouseHitActiveRef.current = false
+        }
+        container.addEventListener("pointermove", updateMouseUv)
+        container.addEventListener("pointerleave", handlePointerLeave)
         pageScrollBaselineRef.current = null
         updatePageScrollProgress()
 
@@ -483,7 +607,40 @@ export default function EinsteinRosen(props: Partial<EinsteinRosenProps>) {
 
             const shader = (roadMaterial.userData as any).shader
             if (shader) {
+                const previousMouse = mouseCurrentUvRef.current.clone()
+                const follow = mouseHitActiveRef.current
+                    ? mouseStretchLagRef.current
+                    : mouseStretchReleaseRef.current
+                mouseCurrentUvRef.current.lerp(mouseTargetUvRef.current, follow)
+                mouseVelocityUvRef.current
+                    .copy(mouseCurrentUvRef.current)
+                    .sub(previousMouse)
+
+                const targetActive = mouseHitActiveRef.current ? 1 : 0
+                mouseActiveStrengthRef.current +=
+                    (targetActive - mouseActiveStrengthRef.current) * follow
+
                 shader.uniforms.uTime.value = elapsed
+                shader.uniforms.uLiquidAmount.value = liquidAmountRef.current
+                shader.uniforms.uLiquidSpeed.value = liquidSpeedRef.current
+                shader.uniforms.uMouse.value.copy(mouseCurrentUvRef.current)
+                shader.uniforms.uMouseVelocity.value.copy(mouseVelocityUvRef.current)
+                shader.uniforms.uMouseLiquidAmount.value =
+                    mouseLiquidAmountRef.current
+                shader.uniforms.uMouseLiquidRadius.value =
+                    mouseLiquidRadiusRef.current
+                shader.uniforms.uMouseStretchAmount.value =
+                    mouseStretchAmountRef.current
+                shader.uniforms.uMouseBlobAmount.value =
+                    mouseBlobAmountRef.current
+                shader.uniforms.uMouseBlobSoftness.value =
+                    mouseBlobSoftnessRef.current
+                shader.uniforms.uMouseLeaveBoost.value =
+                    mouseLeaveStretchBoostRef.current
+                shader.uniforms.uMouseStretchAnisotropy.value =
+                    mouseStretchAnisotropyRef.current
+                shader.uniforms.uMouseActive.value =
+                    mouseActiveStrengthRef.current
             }
 
             const sourceProgress = usePageScrollRef.current
@@ -539,6 +696,8 @@ export default function EinsteinRosen(props: Partial<EinsteinRosenProps>) {
             resizeObserver.disconnect()
             window.removeEventListener("scroll", updatePageScrollProgress)
             window.removeEventListener("resize", updatePageScrollProgress)
+            container.removeEventListener("pointermove", updateMouseUv)
+            container.removeEventListener("pointerleave", handlePointerLeave)
             pageScrollBaselineRef.current = null
             renderer.dispose()
             roadGeometry.dispose()
@@ -641,6 +800,94 @@ addPropertyControls(EinsteinRosen, {
         type: ControlType.Color,
         title: "Background",
         defaultValue: "rgba(0,0,0,0)",
+    },
+    liquidAmount: {
+        type: ControlType.Number,
+        title: "Liquid Amt",
+        min: 0,
+        max: 0.15,
+        step: 0.001,
+        defaultValue: 0.045,
+    },
+    liquidSpeed: {
+        type: ControlType.Number,
+        title: "Liquid Speed",
+        min: 0,
+        max: 4,
+        step: 0.05,
+        defaultValue: 1,
+    },
+    mouseLiquidAmount: {
+        type: ControlType.Number,
+        title: "Mouse Amt",
+        min: 0,
+        max: 0.2,
+        step: 0.001,
+        defaultValue: 0.04,
+    },
+    mouseLiquidRadius: {
+        type: ControlType.Number,
+        title: "Mouse Radius",
+        min: 0.05,
+        max: 0.4,
+        step: 0.01,
+        defaultValue: 0.18,
+    },
+    mouseStretchAmount: {
+        type: ControlType.Number,
+        title: "Stretch Amt",
+        min: 0,
+        max: 0.3,
+        step: 0.001,
+        defaultValue: 0.1,
+    },
+    mouseStretchLag: {
+        type: ControlType.Number,
+        title: "Stretch Lag",
+        min: 0.02,
+        max: 0.4,
+        step: 0.01,
+        defaultValue: 0.12,
+    },
+    mouseStretchRelease: {
+        type: ControlType.Number,
+        title: "Stretch Out",
+        min: 0.01,
+        max: 0.3,
+        step: 0.01,
+        defaultValue: 0.05,
+    },
+    mouseBlobAmount: {
+        type: ControlType.Number,
+        title: "Blob Amt",
+        min: 0,
+        max: 0.25,
+        step: 0.001,
+        defaultValue: 0.09,
+    },
+    mouseBlobSoftness: {
+        type: ControlType.Number,
+        title: "Blob Soft",
+        min: 0.5,
+        max: 4,
+        step: 0.1,
+        defaultValue: 1.8,
+    },
+    mouseLeaveStretchBoost: {
+        type: ControlType.Number,
+        title: "Leave Boost",
+        min: 1,
+        max: 4,
+        step: 0.1,
+        defaultValue: 2.2,
+    },
+    mouseStretchAnisotropy: {
+        type: ControlType.Number,
+        title: "Stretch Dir",
+        min: 0,
+        max: 1,
+        step: 0.01,
+        defaultValue: 0.45,
     },
     exposure: {
         type: ControlType.Number,
