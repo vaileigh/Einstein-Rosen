@@ -70,7 +70,7 @@ function createRoadMaterial() {
         float coreMask = pow(centered, 5.5);
         float prismMask = pow(centered, 1.35);
         float edgeFade = smoothstep(0.0, 0.12, uv.x) * (1.0 - smoothstep(0.88, 1.0, uv.x));
-        float travel = uv.y * 180.0 - uTime * 16.0;
+        float travel = uv.y * 180.0 + uTime * 16.0;
 
         float sweepNoise = noise21(vec2(travel * 0.035, uv.x * 9.0));
         float fineNoise = noise21(vec2(travel * 0.17, uv.x * 38.0));
@@ -110,7 +110,7 @@ function createRoadMaterial() {
         float laneLeft = exp(-abs(uvGlow.x - 0.26) * 22.0);
         float laneMid = exp(-abs(uvGlow.x - 0.5) * 30.0);
         float laneRight = exp(-abs(uvGlow.x - 0.74) * 22.0);
-        float travelGlow = uvGlow.y * 210.0 - uTime * 22.0;
+        float travelGlow = uvGlow.y * 210.0 + uTime * 22.0;
         float streakA = pow(max(0.0, sin(travelGlow * 0.62 + uvGlow.x * 20.0)), 24.0);
         float streakB = pow(max(0.0, sin(travelGlow * 0.38 - uvGlow.x * 34.0 + 1.4)), 28.0);
         float sparkleGlow = pow(noise21(vec2(travelGlow * 0.25, uvGlow.x * 75.0)), 18.0);
