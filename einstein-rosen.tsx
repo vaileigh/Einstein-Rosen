@@ -5,7 +5,8 @@ import * as THREE from "three"
 type EinsteinRosenProps = {
     progress: number
     backgroundColor: string
-    minimapSize: number
+    minimapWidthVw: number
+    minimapMinSize: number
     showMinimap: boolean
     exposure: number
     minimapRight: number
@@ -152,8 +153,9 @@ function buildTrackPoints(segments: number) {
 export default function EinsteinRosen(props: Partial<EinsteinRosenProps>) {
     const {
         progress = 0.12,
-        backgroundColor = "#27221E",
-        minimapSize = 96,
+        backgroundColor = "rgba(0,0,0,0)",
+        minimapWidthVw = 12,
+        minimapMinSize = 160,
         showMinimap = true,
         exposure = 1,
         minimapRight = -6,
@@ -163,7 +165,9 @@ export default function EinsteinRosen(props: Partial<EinsteinRosenProps>) {
     const containerRef = React.useRef<HTMLDivElement | null>(null)
     const progressRef = React.useRef(progress)
     const minimapVisibleRef = React.useRef(showMinimap)
-    const minimapSizeRef = React.useRef(minimapSize)
+    const minimapWidthVwRef = React.useRef(minimapWidthVw)
+    const minimapMinSizeRef = React.useRef(minimapMinSize)
+    const minimapPixelSizeRef = React.useRef(120)
     const exposureRef = React.useRef(exposure)
     const backgroundRef = React.useRef(backgroundColor)
     const minimapRightRef = React.useRef(minimapRight)
@@ -171,7 +175,8 @@ export default function EinsteinRosen(props: Partial<EinsteinRosenProps>) {
 
     progressRef.current = progress
     minimapVisibleRef.current = showMinimap
-    minimapSizeRef.current = minimapSize
+    minimapWidthVwRef.current = minimapWidthVw
+    minimapMinSizeRef.current = minimapMinSize
     exposureRef.current = exposure
     backgroundRef.current = backgroundColor
     minimapRightRef.current = minimapRight
@@ -183,16 +188,17 @@ export default function EinsteinRosen(props: Partial<EinsteinRosenProps>) {
         if (!container) return
 
         const scene = new THREE.Scene()
-        scene.background = new THREE.Color(backgroundRef.current)
+        scene.background = null
 
         const camera = new THREE.PerspectiveCamera(60, 1, 1, 1000)
         camera.position.set(0, 1, 1).setLength(100)
         camera.lookAt(scene.position)
 
-        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false })
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
         renderer.outputColorSpace = THREE.SRGBColorSpace
         renderer.toneMapping = THREE.ACESFilmicToneMapping
         renderer.toneMappingExposure = exposureRef.current
+        renderer.setClearColor(0x000000, 0)
         container.appendChild(renderer.domElement)
 
         const light = new THREE.DirectionalLight(0xffffff, 0.9)
@@ -337,7 +343,13 @@ export default function EinsteinRosen(props: Partial<EinsteinRosenProps>) {
             camera.updateProjectionMatrix()
             renderer.setSize(width, height, false)
 
-            const mapSize = minimapSizeRef.current
+            const viewportWidth =
+                typeof window !== "undefined" ? window.innerWidth : width
+            const mapSize = Math.max(
+                minimapMinSizeRef.current,
+                viewportWidth * (minimapWidthVwRef.current / 100)
+            )
+            minimapPixelSizeRef.current = mapSize
             const padding = 28
             const trackWidth = bounds.maxX - bounds.minX
             const trackHeight = bounds.maxZ - bounds.minZ
@@ -386,7 +398,6 @@ export default function EinsteinRosen(props: Partial<EinsteinRosenProps>) {
         let frameId = 0
         const renderFrame = () => {
             const elapsed = clock.getElapsedTime()
-            scene.background = new THREE.Color(backgroundRef.current)
             renderer.toneMappingExposure = exposureRef.current
 
             const shader = (roadMaterial.userData as any).shader
@@ -411,7 +422,7 @@ export default function EinsteinRosen(props: Partial<EinsteinRosenProps>) {
             minimapMarker.setAttribute("cy", minimapPoint.y.toFixed(2))
             minimapGroup.setAttribute(
                 "transform",
-                `rotate(${THREE.MathUtils.radToDeg(minimapRotation).toFixed(2)} ${minimapSizeRef.current * 0.5} ${minimapSizeRef.current * 0.5})`
+                `rotate(${THREE.MathUtils.radToDeg(minimapRotation).toFixed(2)} ${(minimapPixelSizeRef.current * 0.5).toFixed(2)} ${(minimapPixelSizeRef.current * 0.5).toFixed(2)})`
             )
 
             camera.position.copy(curvePoint)
@@ -473,7 +484,7 @@ addPropertyControls(EinsteinRosen, {
     backgroundColor: {
         type: ControlType.Color,
         title: "Background",
-        defaultValue: "#27221E",
+        defaultValue: "rgba(0,0,0,0)",
     },
     exposure: {
         type: ControlType.Number,
@@ -490,13 +501,22 @@ addPropertyControls(EinsteinRosen, {
         enabledTitle: "Show",
         disabledTitle: "Hide",
     },
-    minimapSize: {
+    minimapWidthVw: {
         type: ControlType.Number,
-        title: "Map Size",
+        title: "Map Width %",
+        min: 4,
+        max: 30,
+        step: 0.5,
+        defaultValue: 12,
+        hidden: (props) => !props.showMinimap,
+    },
+    minimapMinSize: {
+        type: ControlType.Number,
+        title: "Map Min Px",
         min: 72,
-        max: 320,
+        max: 280,
         step: 1,
-        defaultValue: 96,
+        defaultValue: 160,
         hidden: (props) => !props.showMinimap,
     },
     minimapRight: {
